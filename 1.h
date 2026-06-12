@@ -1,9 +1,12 @@
 #ifndef PROJECT_H
 #define PROJECT_H
-#include<iostream>
-#include<string>
-#include<vector>
+#include <iostream>
+#include <string>
+#include <vector>
 using namespace std;
+
+class OrderDB;
+
 class Menuitem
 {
 protected:
@@ -18,6 +21,7 @@ public:
     double getprice();
     virtual ~Menuitem(){};
 };
+
 class Food : public Menuitem
 {
 private:
@@ -26,46 +30,34 @@ public:
     Food(int _id , string _name , string _explain , double _price , bool _sold , int _cooktime) : Menuitem(_id , _name , _explain , _price , _sold) , cooking_time{_cooktime}{}
     virtual void displayinfo() override;
 };
+
 class Drink : public Menuitem
 {
 private:
     double V;
 public:
-    Drink(int _id , string _name , string _explain , double _price , bool _sold , int _V) : Menuitem(_id , _name , _explain , _price , _sold) , V{_V}{}
+    Drink(int _id , string _name , string _explain , double _price , bool _sold , double _V) : Menuitem(_id , _name , _explain , _price , _sold) , V{_V}{}
     virtual void displayinfo() override;
 };
-class Address
-{
-private:
-    string city;
-    string street;
-    string house_number;
-public:
-    Address();
-   Address(string c , string st , string h_num): city{c} , street{st} , house_number{h_num}{} // ثبت آدرس و نشان دادن پیام موفقیت
-    string getAddress()
-    {
-        string add = city + "," + street + "," + house_number + "\n";
-        return add;
-    }
-};
+
 class Resturant
 {
 private:
     int id;
     string name;
-    Address address;
+    string address;
     bool openorclose;
     int time;
     string phone_number;
-    vector<Menuitem*> menu;
+    vector<Menuitem *> menu;
 public:
-    Resturant(int ID , string Name , Address add, bool op , int Time , string phone);
+    Resturant(int ID , string Name , string add ,bool op , int Time , string phone);
     void Showinfo(string s);
-    void additem(Menuitem *item);
+    void additem(Menuitem * item);
     void showMenu();
     ~Resturant();
 };
+
 class User
 {
 protected:
@@ -76,22 +68,30 @@ protected:
 public:
     User(int _id , string _username , string _password , string _role) : id{_id} , username{_username} , password{_password} , role{_role}{}
     virtual void showportal() = 0;
-    virtual ~User();
+    virtual ~User(){}
 };
+
 class Customer : public User
 {
+private:
+    int customerID;
 public:
     Customer(int _id , string _username , string _password , string _role) : User(_id , _username , _password , "Customer"){}
-    Customer();
+    Customer(): User(0, "", "", "Customer"), customerID{0} {}
     void showportal() override;
 };
+
 class ResturantBoss : public User
 {
+private:
+    int bossID;
 public:
-    ResturantBoss(int _id , string _username , string _password , string _role) : User(_id , _username , _password , "ResturantBoss"){}
-    ResturantBoss();
+    ResturantBoss(int _id , string _username , string _password , string _role) : User(_id , _username , _password , "ResturantBoss"), bossID{_id}{}
+    ResturantBoss(): User(0, "", "", "ResturantBoss"), bossID{0} {};
+    int getBossID();
     void showportal() override;
 };
+
 class Admin : public User
 {
 public:
@@ -99,6 +99,7 @@ public:
     Admin();
     void showportal() override;
 };
+
 class Order
 {
 private:
@@ -112,21 +113,19 @@ public:
     Order(int _orderID, int _customerid , int _resturantid) : orderID{_orderID} , customerid{_customerid}, resturantid{_resturantid} {}
     void addfood(Menuitem * x);
     int getorderid();
-    double getprice()
-    {
-        return Price;
-    }
+    double getprice();
     void printOrder();
-    ~Order(){}
 };
+
 class SabadKharid
 {
 private:
     vector<Order> orders;
 public:
-    void showSabad();
     void EditSabad(int id);
-    
+    void showSabad();
     void Finalize(OrderDB &db , int custID , int RestID);
+    void addOrder(Order x) { orders.push_back(x); }
 };
+
 #endif
