@@ -3,7 +3,7 @@
 #include <iostream>
 #include <string>
 #include "sqlite3.h"
-
+class Customer;
 using namespace std;
 
 enum class ROLE
@@ -26,7 +26,7 @@ public:
         else if (role == ROLE::ResturantBoss) r = "ResturantBoss";
         else if (role == ROLE::Admin) r = "Admin";
         
-        string str = "INSERT INTO Users (Username, Password, Role) VALUES ('" + user + "', '" + pass + "', '" + r + "');";
+        string str = "INSERT INTO Users (Username, Password, Role, Points, Level) VALUES ('" + user + "', '" + pass + "', '" + r + "', 0, 'Normal');";
         if (sqlite3_exec(sq, str.c_str(), nullptr, nullptr, nullptr) == SQLITE_OK)
         {
             return true;
@@ -420,20 +420,320 @@ public:
         return 0.0;
     }
 };
+class CustomerDB
+{
+private:
+    sqlite3 *sq;
+public:
+    CustomerDB(sqlite3* db) : sq{db} {}
+    Customer LoadCustomer(int id)
+    {
+        sqlite3_stmt* stmt;
+        string str = "SELECT id, Username, Password, Points, Level FROM Users WHERE id = " + to_string(id) + ";";
+        int points = 0;
+        string level = "Normal";
+        string username = "", password = "";
+        if (sqlite3_prepare_v2(sq, str.c_str(), -1, &stmt, nullptr) == SQLITE_OK)
+        {
+            if (sqlite3_step(stmt) == SQLITE_ROW)
+            {
+                const unsigned char* u = sqlite3_column_text(stmt, 1);
+                const unsigned char* p = sqlite3_column_text(stmt, 2);
+                username = u ? reinterpret_cast<const char*>(u) : "";
+                password = p ? reinterpret_cast<const char*>(p) : "";
+                points = sqlite3_column_int(stmt, 3);
+                const unsigned char* lv = sqlite3_column_text(stmt, 4);
+                if (lv) 
+                {
+                    level = reinterpret_cast<const char*>(lv);
+                }
+            }
+        }
+        sqlite3_finalize(stmt);
+        return Customer(id, username, password, "Customer", points, level);
+    }
+    void SaveCustomer(Customer &c , int custID)
+    {
+        string str = "UPDATE Users SET Points = " + to_string(c.getpoint()) +
+                     ", Level = '" + c.getlevel()->getlevel() + "' WHERE id = " + to_string(custID) + ";";
+        sqlite3_exec(sq, str.c_str(), nullptr, nullptr, nullptr);
+    }
+    void AchiveNextLevel(int custID , string NewLevel , string OldLevel)
+    {
+        string str = "INSERT INTO LevelHistory(CustomerID, OldLevel , NewLevel) VALUES ("+to_string(custID)+", "+OldLevel+", "+NewLevel+");";
+        sqlite3_exec(sq, str.c_str(), nullptr, nullptr, nullptr);
+    }
+    void ShowLevelHistory(int custID)
+    {
+        sqlite3_stmt* stmt;
+        string str = "SELECT OldLevel, NewLevel, ChangeDate FROM LevelHistory WHERE CustomerID = " + to_string(custID) + " ORDER BY ID;";
+        if (sqlite3_prepare_v2(sq, str.c_str(), -1, &stmt, nullptr) == SQLITE_OK)
+        {
+            cout << "\n===== YOUR LEVEL HISTORY =====\n";
+            while (sqlite3_step(stmt) == SQLITE_ROW)
+            {
+                string oldL = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
+                string newL = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
+                string date = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
+                cout << oldL << " -> " << newL << " | " << date << endl;
+            }
+        }
+        sqlite3_finalize(stmt);
+    }
 
+    void ShowAllLevelHistory()
+    {
+        sqlite3_stmt* stmt;
+        string str = "SELECT CustomerID, OldLevel, NewLevel FROM LevelHistory ORDER BY ID DESC;";
+        if (sqlite3_prepare_v2(sq, str.c_str(), -1, &stmt, nullptr) == SQLITE_OK)
+        {
+            cout << "\n===== LEVEL CHANGE LOG (ALL CUSTOMERS) =====\n";
+            while (sqlite3_step(stmt) == SQLITE_ROW)
+            {
+                int custID = sqlite3_column_int(stmt, 0);
+                string oldL = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
+                string newL = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
+                cout << "CustomerID: " << custID << " | " << oldL << " -> " << newL << endl;
+            }
+        }
+        sqlite3_finalize(stmt);
+    }
+    void ShowLevelReport()
+    {
+            sqlite3_stmt* stmt;
+            string str = "SELECT Level, COUNT(*) FROM Users WHERE Role='Customer' GROUP BY Level;";
+            if (sqlite3_prepare_v2(sq, str.c_str(), -1, &stmt, nullptr) == SQLITE_OK)
+            {
+                cout << "\n===== LOYALTY LEVEL REPORT =====\n";
+                while (sqlite3_step(stmt) == SQLITE_ROW)
+                {
+                    const unsigned char* lv = sqlite3_column_text(stmt, 0);
+                    string level = lv ? reinterpret_cast<const char*>(lv) : "Normal";
+                    int count = sqlite3_column_int(stmt, 1);
+                    cout << level << ": " << count << " customer(s)" << endl;
+                }
+            }
+            sqlite3_finalize(stmt);
+        }
+        void UpdateLastOrderDate(int custID)
+        {
+            string str = "UPDATE Users SET LastOrderDate = strftime('%Y-%m-%d','now') WHERE id = " + to_string(custID) + ";";
+            sqlite3_exec(sq, str.c_str(), nullptr, nullptr, nullptr);
+        }
+        void CheckDowngrade(int custID)
+        {
+            sqlite3_stmt* stmt;
+        string str = "SELECT Level, Points, "
+                    "CAST(julianday('now', 'localtime') - julianday(LastOrderDate) AS INTEGER) "
+                    "FROM Users WHERE id = " + to_string(custID) + " AND LastOrderDate IS NOT NULL;";
+        
+        string currentLevel = "Normal";
+        int currentPoints = 0;
+        int daysPassed = 0;
+        bool processDowngrade = false;
+
+        if (sqlite3_prepare_v2(sq, str.c_str(), -1, &stmt, nullptr) == SQLITE_OK)
+        {
+            if (sqlite3_step(stmt) == SQLITE_ROW)
+            {
+                const unsigned char* lv = sqlite3_column_text(stmt, 0);
+                currentLevel = lv ? reinterpret_cast<const char*>(lv) : "Normal";
+                currentPoints = sqlite3_column_int(stmt, 1);
+                daysPassed = sqlite3_column_int(stmt, 2);
+                if (daysPassed >= 30 && currentLevel != "Normal")
+                {
+                    processDowngrade = true;
+                }
+            }
+        }
+        sqlite3_finalize(stmt);
+        if (processDowngrade)
+        {
+            string newLevel = "Normal";
+            int newPoints = 0;
+            if (currentLevel == "VIP")
+            {
+                newLevel = "Gold";
+                newPoints = 301;
+            }
+            else if (currentLevel == "Gold")
+            {
+                newLevel = "Silver";
+                newPoints = 101;
+            }
+            else if (currentLevel == "Silver")
+            {
+                newLevel = "Normal";
+                newPoints = 0;
+            }
+            string updateQuery = "UPDATE Users SET Level = '" + newLevel + "', Points = " + to_string(newPoints) + 
+                                "WHERE id = " + to_string(custID) + ";";
+            sqlite3_exec(sq, updateQuery.c_str(), nullptr, nullptr, nullptr);
+
+            string historyQuery = "INSERT INTO LevelHistory(CustomerID, OldLevel, NewLevel) VALUES (" + 
+                                to_string(custID) + ", '" + currentLevel + "', '" + newLevel + "');";
+            sqlite3_exec(sq, historyQuery.c_str(), nullptr, nullptr, nullptr);
+
+            cout << "\n Because of not be active for 30 days Your level Downgrade to: " << newLevel << " \n" << endl;
+        }
+    }
+    void AdminSetLevel(int custID, string newLevel)
+    {
+        Customer c = LoadCustomer(custID);
+        string oldLevel = c.getlevel()->getlevel();
+        string str = "UPDATE Users SET Level = '" + newLevel + "' WHERE id = " + to_string(custID) + ";";
+        sqlite3_exec(sq, str.c_str(), nullptr, nullptr, nullptr);
+        AchiveNextLevel(custID, newLevel, oldLevel);
+        cout << "Level updated: " << oldLevel << " -> " << newLevel << endl;
+    }
+
+    void AdminSetPoints(int custID, int points)
+    {
+        string str = "UPDATE Users SET Points = " + to_string(points) + " WHERE id = " + to_string(custID) + ";";
+        sqlite3_exec(sq, str.c_str(), nullptr, nullptr, nullptr);
+        cout << "Points updated.\n";
+    }
+    void UseCoupon(int custID)
+    {
+    string str = "UPDATE Copon SET Count = Count - 1 WHERE CustomerID = " + to_string(custID) + " AND Count > 0 LIMIT 1);";
+    sqlite3_exec(sq, str.c_str(), nullptr, nullptr, nullptr);
+    cout << "Yek adad Copon ba movafaghariat sabt va az hesab shoma kasr shod.\n";
+    }
+    void setBadges(int custID, string badge)
+{
+    sqlite3_stmt* stmt;
+    string str = "SELECT Badges FROM Users WHERE id = " + to_string(custID) + ";";
+    string badges = "";
+    if (sqlite3_prepare_v2(sq, str.c_str(), -1, &stmt, nullptr) == SQLITE_OK)
+    {
+        if (sqlite3_step(stmt) == SQLITE_ROW)
+        {
+            const unsigned char* b = sqlite3_column_text(stmt, 0);
+            if (b) badges = reinterpret_cast<const char*>(b);
+        }
+    }
+    sqlite3_finalize(stmt);
+
+    if (badges.find(badge) != string::npos)
+    {
+        return;
+    }
+    else
+    {
+        badges += "\n" + badge;
+    }
+    string upd = "UPDATE Users SET Badges = '" + badges + "' WHERE id = " + to_string(custID) + ";";
+    sqlite3_exec(sq, upd.c_str(), nullptr, nullptr, nullptr);
+}
+    string GetBadges(int custID)
+    {
+        sqlite3_stmt* stmt;
+        string str = "SELECT Badges FROM Users WHERE id = " + to_string(custID) + ";";
+        string badges = "None";
+        if (sqlite3_prepare_v2(sq, str.c_str(), -1, &stmt, nullptr) == SQLITE_OK)
+        {
+            if (sqlite3_step(stmt) == SQLITE_ROW)
+            {
+                const unsigned char* b = sqlite3_column_text(stmt, 0);
+                if (b && reinterpret_cast<const char*>(b)[0] != '\0')
+                    badges = reinterpret_cast<const char*>(b);
+            }
+        }
+        sqlite3_finalize(stmt);
+        return badges;
+    }
+    void MonthlyCopon(int custID , string lvl)
+    {
+        sqlite3_stmt* stmt;
+        string checkStr = "SELECT COUNT(*) FROM Copon WHERE CustomerID = " + to_string(custID) +
+                           " AND Month = strftime('%Y-%m','now','localtime');";
+        int alreadyGiven = 0;
+        if (sqlite3_prepare_v2(sq, checkStr.c_str(), -1, &stmt, nullptr) == SQLITE_OK)
+        {
+            if (sqlite3_step(stmt) == SQLITE_ROW)
+            {
+                alreadyGiven = sqlite3_column_int(stmt, 0);
+            }
+        }
+        sqlite3_finalize(stmt);
+
+        if (alreadyGiven > 0)
+        {
+            return;
+        }
+
+        int count = 0;
+        if (lvl == "Silver")
+        {
+            count = 1;
+        }
+        else if (lvl == "Gold")
+        {
+            count = 1;
+        }
+        else if (lvl == "VIP")
+        {
+            count = 3;
+        }
+        else
+        {
+            return;
+        }
+        string str = "INSERT INTO Copon(CustomerID , Month , Count) VALUES ("+to_string(custID)+" , strftime('%Y-%m' , 'now' , 'localtime'), "+to_string(count)+");";
+        sqlite3_exec(sq, str.c_str(), nullptr, nullptr, nullptr);
+        cout << "You received " << count << " special coupon(s) this month!\n";
+    }
+    int GetCopon(int custID)
+    {
+        sqlite3_stmt* stmt;
+        string str = "SELECT COALESCE(SUM(Count), 0) FROM Copon WHERE CustomerID = " + to_string(custID) + ";";
+        int total = 0;
+        if (sqlite3_prepare_v2(sq, str.c_str(), -1, &stmt, nullptr) == SQLITE_OK)
+        {
+            if (sqlite3_step(stmt) == SQLITE_ROW)
+            {
+                total = sqlite3_column_int(stmt, 0);
+            }
+        }
+        sqlite3_finalize(stmt);
+        return total;
+    }
+    int IncrementOrderCount(int custID)
+    {
+        string upd = "UPDATE Users SET OrderCount = COALESCE(OrderCount,0) + 1 WHERE id = " + to_string(custID) + ";";
+        sqlite3_exec(sq, upd.c_str(), nullptr, nullptr, nullptr);
+
+        sqlite3_stmt* stmt;
+        string q = "SELECT OrderCount FROM Users WHERE id = " + to_string(custID) + ";";
+        int cnt = 0;
+        if (sqlite3_prepare_v2(sq, q.c_str(), -1, &stmt, nullptr) == SQLITE_OK)
+        {
+            if (sqlite3_step(stmt) == SQLITE_ROW)
+                cnt = sqlite3_column_int(stmt, 0);
+        }
+        sqlite3_finalize(stmt);
+        return cnt;
+    }
+};
 inline void CreateTable(sqlite3* db)
 {
     char* erormess = 0;
-    const char* Users = "CREATE TABLE IF NOT EXISTS Users (id INTEGER PRIMARY KEY AUTOINCREMENT, Username TEXT UNIQUE, Password TEXT, Role TEXT);";
+    const char* Users = "CREATE TABLE IF NOT EXISTS Users (id INTEGER PRIMARY KEY AUTOINCREMENT, Username TEXT UNIQUE, Password TEXT, Role TEXT, "
+    "Points INTEGER DEFAULT 0 , Level TEXT DEFAULT 'Normal', LastOrderDate TEXT, Badges TEXT, OrderCount INTEGER DEFAULT 0);";
     const char* Resturants = "CREATE TABLE IF NOT EXISTS Resturants (ID INTEGER PRIMARY KEY, Name TEXT, Address TEXT, OpenSTATUS INTEGER,Explain TEXT ,"
     "Time INTEGER, PhoneNumber TEXT, Accept INTEGER DEFAULT 0);";
     const char* Menu = "CREATE TABLE IF NOT EXISTS Menu(ID INTEGER PRIMARY KEY, Name TEXT, Explain TEXT, price REAL, Soldout TEXT, Type TEXT, Cooking_Time INTEGER, Volume REAL," 
     "RestID INTEGER,FOREIGN KEY (RestID) REFERENCES Resturants(id));";
     const char* Orders = "CREATE TABLE IF NOT EXISTS Orders(ID INTEGER PRIMARY KEY AUTOINCREMENT, CustomerID INTEGER, ResturantID INTEGER, Price REAL, Stat TEXT);";
+    const char* Copon = "CREATE TABLE IF NOT EXISTS Copon(ID INTEGER PRIMARY KEY AUTOINCREMENT, CustomerID INTEGER , Month TEXT , Count INTEGER);";
+    const char* LevelHistory = "CREATE TABLE IF NOT EXISTS LevelHistory(ID INTEGER PRIMARY KEY AUTOINCREMENT,CustomerID INTEGER, OldLevel TEXT , NewLevel TEXT)";
     sqlite3_exec(db, Users, nullptr, nullptr, &erormess);
     sqlite3_exec(db, Resturants, nullptr, nullptr, &erormess);
     sqlite3_exec(db, Menu, nullptr, nullptr, &erormess);
     sqlite3_exec(db, Orders, nullptr, nullptr, &erormess);
+    sqlite3_exec(db, LevelHistory, nullptr, nullptr, &erormess);
+    sqlite3_exec(db, Copon, nullptr, nullptr, &erormess);
+
 }
 
 #endif

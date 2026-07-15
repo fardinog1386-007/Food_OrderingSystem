@@ -3,10 +3,117 @@
 #include <iostream>
 #include <string>
 #include <vector>
+class OrderDB;
+class CustomerDB;
 using namespace std;
 
 class OrderDB;
-
+class LoyaltyPoints
+{
+public:
+    virtual string getlevel() = 0;
+    virtual int nextlevel() = 0;
+    virtual double zarib() = 0;
+    virtual double discount()= 0;
+    virtual double deliveryprice(double pricee) = 0;
+    virtual ~LoyaltyPoints() {}
+};
+class Normal : public LoyaltyPoints
+{
+public:
+    string getlevel() override
+    {
+        return "Normal";
+    }
+    int nextlevel() override
+    {
+        return 100;
+    }
+    double zarib() override
+    {
+        return 1;
+    }
+    double discount() override
+    {
+        return 0;
+    }
+    double deliveryprice(double pricee) override
+    {
+        return pricee;
+    }
+};
+class Silver : public LoyaltyPoints
+{
+public:
+    string getlevel() override
+    {
+        return "Silver";
+    }
+    int nextlevel() override
+    {
+        return 300;
+    }
+    double zarib() override
+    {
+        return 1.2;
+    }
+    double discount() override
+    {
+        return 0.05;
+    }
+    double deliveryprice(double pricee) override
+    {
+        return pricee * 0.90;
+    }
+};
+class Gold : public LoyaltyPoints
+{
+public:
+    string getlevel() override
+    {
+        return "Gold";
+    }
+    int nextlevel() override
+    {
+        return 700;
+    }
+    double zarib() override
+    {
+        return 1.5;
+    }
+    double discount() override
+    {
+        return 0.10;
+    }
+    double deliveryprice(double pricee) override
+    {
+        return pricee * 0.5;
+    }
+};
+class VIP : public LoyaltyPoints
+{
+public:
+    string getlevel() override
+    {
+        return "VIP";
+    }
+    int nextlevel() override
+    {
+        return 999999;
+    }
+    double zarib() override
+    {
+        return 2;
+    }
+    double discount() override
+    {
+        return 0.15;
+    }
+    double deliveryprice(double pricee) override
+    {
+        return 0;
+    }
+};
 class Menuitem
 {
 protected:
@@ -75,10 +182,40 @@ class Customer : public User
 {
 private:
     int customerID;
+    int points;
+    LoyaltyPoints* level;
 public:
-    Customer(int _id , string _username , string _password , string _role) : User(_id , _username , _password , "Customer"){}
+    Customer(int _id , string _username , string _password , string _role , int point , string lev) : User(_id , _username , _password , "Customer") , points(point)
+    {
+        if (lev == "Silver")
+        {
+            level = new Silver();
+        }
+        else if (lev == "Gold")
+        {
+            level = new Gold;
+        }
+        else if (lev == "VIP")
+        {
+            level = new VIP;
+        }
+        else
+        {
+            level = new Normal;
+        }
+    }
     Customer(): User(0, "", "", "Customer"), customerID{0} {}
     void showportal() override;
+    void addpoint(double orderprice);
+    void checkLevelUpgrade();
+    int getpoint()
+    {
+        return points;
+    }
+    LoyaltyPoints* getlevel()
+    {
+        return level;
+    }
 };
 
 class ResturantBoss : public User
@@ -115,6 +252,7 @@ public:
     int getorderid();
     double getprice();
     void printOrder();
+    void setprice(double m);
 };
 
 class SabadKharid
@@ -124,7 +262,7 @@ private:
 public:
     void EditSabad(int id);
     void showSabad();
-    void Finalize(OrderDB &db , int custID , int RestID);
+    void Finalize(OrderDB &db ,CustomerDB &custDB , Customer &cust, int custID , int RestID , int use);
     void addOrder(Order x) { orders.push_back(x); }
 };
 

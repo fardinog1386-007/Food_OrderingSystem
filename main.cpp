@@ -49,12 +49,31 @@ int main()
                 if (role == "Customer")
                 {
                     SabadKharid sabad;
-                    
+                    CustomerDB customerDB(db);
+                    customerDB.CheckDowngrade(iD);
+                    Customer cust = customerDB.LoadCustomer(iD);
+                    customerDB.MonthlyCopon(iD, cust.getlevel()->getlevel());
+                    cout << "\n=================================\n";
+                    cout << " Welcome, " << user << "!\n";
+                    cout << " Membership Level : " << cust.getlevel()->getlevel() << endl;
+                    cout << " Current Points   : " << cust.getpoint() << endl;
+                    if (cust.getlevel()->getlevel() == "VIP")
+                    {
+                        cout << " You are at the highest level!\n";
+                    }
+                    else
+                    {
+                        int need = cust.getlevel()->nextlevel() - cust.getpoint();
+                        cout << " Points to next level: " << (need > 0 ? need : 0) << endl;
+                    }
+                    cout << " Badges           : " << customerDB.GetBadges(iD) << endl;
+                    cout << " Coupons available: " << customerDB.GetCopon(iD) << endl;
+                    cout << "=================================\n";
                     while (true)
                     {
-                        cout << "1_ Show Restaurants\n2_ Show Sabad\n3_ Edit Sabad\n4_ Order History\n5_ Finalize Order\n6_ Logout\n";
+                        cout << "1_ Show Restaurants\n2_ Show Sabad\n3_ Edit Sabad\n4_ Order History\n5_ Finalize Order\n6_ My Level History\n7_ Logout\n";
                         cin >> choice;
-                        if (choice == 6) break;
+                        if (choice == 7) break;
                         else if (choice == 1)
                         {
                             restu.ShowAllResturant();
@@ -143,12 +162,17 @@ int main()
                         }
                         
                         else if (choice == 5)
-                        {
+                        {   
                             cout << "Enter Restaurant ID to finalize: ";
                             int restid;
                             cin >> restid;
-                            sabad.Finalize(order, iD, restid);
+                            sabad.Finalize(order, customerDB, cust, iD, restid , iD);
                         }
+                        else if (choice == 6)
+                        {
+                            customerDB.ShowLevelHistory(iD);
+                        }
+                        
                     }
                 }
                 else if (role == "ResturantBoss")
@@ -311,11 +335,12 @@ int main()
                 }
                 else if (role == "Admin")
                 {
+                    CustomerDB customerDB(db);
                     while (true)
                     {
-                        cout << "1_ Show Register Request\n2_ Show sell info\n3_ Active Members\n4_ Logout\n";
+                        cout << "1_ Show Register Request\n2_ Show sell info\n3_ Active Members\n4_ Loyalty Level Report\n5_ Change Customer Level/Points\n6_ Show Level Change Log\n7_ Logout\n";
                         cin >> choice;
-                        if (choice == 4) break;
+                        if (choice == 7) break;
                         
                         if (choice == 1)
                         {
@@ -332,6 +357,38 @@ int main()
                         else if (choice == 3)
                         {
                             cout << "Active Users Count: " << User.ActiveMembers() << endl;
+                        }
+                        else if (choice == 4)
+                        {
+                            customerDB.ShowLevelReport();
+                        }
+                        else if (choice == 5)
+                        {
+                            cout << "Enter Customer Yousername: ";
+                            string name;
+                            cin >> name;
+                            int custID = User.GetuserID(name);
+                            cout << "1_ Change Level\n2_ Change Points\n";
+                            int sub;
+                            cin >> sub;
+                            if (sub == 1)
+                            {
+                                string newLevel;
+                                cout << "Enter New Level (Normal/Silver/Gold/VIP): ";
+                                cin >> newLevel;
+                                customerDB.AdminSetLevel(custID, newLevel);
+                            }
+                            else if (sub == 2)
+                            {
+                                int pts;
+                                cout << "Enter New Points: ";
+                                cin >> pts;
+                                customerDB.AdminSetPoints(custID, pts);
+                            }
+                        }
+                        else if (choice == 6)
+                        {
+                            customerDB.ShowAllLevelHistory();
                         }
                     }
                 }
